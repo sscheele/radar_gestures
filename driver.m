@@ -11,9 +11,9 @@ if(SETUP_VIA_GUI)
 else 
     % Manual/programmatic entry
     REAL_TIME_MODE = 0; %1 for from device 0 for playback from dat file
-    ENABLE_RECORD = 1;
+    ENABLE_RECORD = 0;
     datFile.path = '';
-    datFile.name = 'tm_demo_log_110120_1615.dat';
+    datFile.name = 'tm_demo_log_110320_1620.dat';
     cfgFile.path = '';
     cfgFile.name = 'profile_2020_11_01T01_22_34_761.cfg';
     logFile.path = '';
@@ -177,9 +177,14 @@ else
     hFrameSlider.SliderStep = [1 10].*1/(hFrameSlider.Max-hFrameSlider.Min);
 end
 
+mags = [];
 frameIndex = 0;
+HISTORY_LEN = 10;
+curr_h_idx = 1;
+history = cell(1, HISTORY_LEN);
+history_is_full = 0;
 while (RUN_VIZ)    
-    
+    total_mag = 0;
     % get bytes from UART buffer or DATA file
     if(REAL_TIME_MODE)
         [bytesBuffer, bytesBufferLen, isBufferFull, bytesAvailableFlag] = readUARTtoBuffer(hDataPort, bytesBuffer, bytesBufferLen, ENABLE_RECORD, fid);
@@ -198,6 +203,7 @@ while (RUN_VIZ)
     
     if(validFrame(frameIndex))
         statsString = {['Frame: ' num2str(newframe.header.frameNumber)], ['Num Frames in Buffer: ' num2str(numFramesAvailable)]}; %reinit stats string each new frame
+        total_mag = total_mag + sum(newframe.detObj.doppler);
         if(1)
 
             % set frame flags
@@ -208,73 +214,31 @@ while (RUN_VIZ)
                 if(HAVE_VALID_PT_CLOUD)
                     % Pt cloud hasn't been transformed based on offset TODO: move transformation to device
                     rotatedPtCloud = transMat * [newframe.detObj.x'; newframe.detObj.y'; newframe.detObj.z';];
-                    hPtCloud.XData = rotatedPtCloud(1,:);
-                    hPtCloud.YData = rotatedPtCloud(2,:);
-                    hPtCloud.ZData = rotatedPtCloud(3,:)+offset.height; 
-
-%plotting  untrasnformed points for debug
-%                     hPtCloud.XData = newframe.detObj.x;
-%                     hPtCloud.YData = newframe.detObj.y;
-%                     hPtCloud.ZData = newframe.detObj.z; 
-                
-
-                else
-                    hPtCloud.XData = [];
-                    hPtCloud.YData = [];
-                    hPtCloud.ZData = [];
-                end
-            end
-            
-            disp(rotatedPtCloud(1,:));
-
-            if(SHOW_TRACKED_OBJ)
-                if(HAVE_VALID_TARGET_LIST)
-                    numTargets = numel(newframe.targets.tid);
-                    if(numTargets > 0)
-                        %Tracker coordinates have been transformed by
-                        %azimuth rotation but not elevation.
-                        %TODO: Add elevation rotation and height
-                        %offset on device
-                        rotatedTargets = rotMat_el * [newframe.targets.posX; newframe.targets.posY; newframe.targets.posZ;];
-                        hTrackObj.XData = rotatedTargets(1,:);
-                        hTrackObj.YData = rotatedTargets(2,:);
-                        hTrackObj.ZData = rotatedTargets(3,:)+offset.height;
-                        
-                    else
-                        hTrackObj.XData = [];
-                        hTrackObj.YData = [];
-                        hTrackObj.ZData = [];  
+                    rotatedPtCloud(3,:) = rotatedPtCloud(3,:)+offset.height;
+                    rotatedPtCloud = rotatedPtCloud';
+                    history{curr_h_idx} = rotatedPtCloud;
+                    curr_h_idx = curr_h_idx + 1;
+                    if (curr_h_idx > HISTORY_LEN)
+                        curr_h_idx = curr_h_idx - HISTORY_LEN;
+                        history_is_full = 1;
                     end
-                else
-                        hTrackObj.XData = [];
-                        hTrackObj.YData = [];
-                        hTrackObj.ZData = [];  
                 end
             end
+            filteredPtCloud = filterStaticPoints(history, rotatedPtCloud);
+%             disp(rotatedPtCloud(1,:));      
 
-            
-            if(SHOW_STATS)
-               if(HAVE_VALID_PT_CLOUD)
-                   statsString{end+1} = ['Pt Cloud: ' num2str(newframe.detObj.numDetectedObj)];
-               else
-                    statsString{end+1} = ['Pt Cloud: '];
-               end
-                              
-               if(HAVE_VALID_TARGET_LIST)
-                   statsString{end+1} = ['Num Tracked Obj: ' num2str(numTargets)];
-               else
-                   statsString{end+1} = ['Num Tracked Obj: '];
-               end
-               
-               % update string
-               hStats.String = statsString;
-            end 
-            
-
-            
         end % have validFrame
     else % have data in newFrame
     end
+    mags = [mags total_mag];
+%     plot(mags);
+    clf();
+    plot3(rotatedPtCloud(:,1), rotatedPtCloud(:,2), rotatedPtCloud(:,3), '+r');
+    hold on;
+    plot3(filteredPtCloud(:,1), filteredPtCloud(:,2), filteredPtCloud(:,3), 'og');
+    axis([0 5 0 5 0 5]);
+    drawnow limitrate;
+    pause(0.2);
 end %while inf
 
 
