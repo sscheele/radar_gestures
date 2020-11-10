@@ -183,6 +183,10 @@ HISTORY_LEN = 10;
 curr_h_idx = 1;
 history = cell(1, HISTORY_LEN);
 history_is_full = 0;
+
+N_SIN_FRAMES = 10;
+doppler_t = N_SIN_FRAMES;
+doppler_history = zeros(1, N_SIN_FRAMES);
 while (RUN_VIZ)    
     total_mag = 0;
     % get bytes from UART buffer or DATA file
@@ -222,6 +226,13 @@ while (RUN_VIZ)
                         curr_h_idx = curr_h_idx - HISTORY_LEN;
                         history_is_full = 1;
                     end
+                    doppler_history = [doppler_history sum(newframe.detObj.doppler)];
+                    if length(doppler_history) > 200
+                        doppler_history = doppler_history(end-N_SIN_FRAMES:end);
+                        doppler_t = N_SIN_FRAMES;
+                    else
+                        doppler_t = doppler_t + 1;
+                    end
                 end
             end
             filteredPtCloud = filterStaticPoints(history, rotatedPtCloud);
@@ -232,13 +243,19 @@ while (RUN_VIZ)
     end
     mags = [mags total_mag];
 %     plot(mags);
-    clf();
-    plot3(rotatedPtCloud(:,1), rotatedPtCloud(:,2), rotatedPtCloud(:,3), '+r');
-    hold on;
-    plot3(filteredPtCloud(:,1), filteredPtCloud(:,2), filteredPtCloud(:,3), 'og');
-    axis([0 5 0 5 0 5]);
-    drawnow limitrate;
-    pause(0.2);
+    dopplerFrameStart = doppler_t - N_SIN_FRAMES + 1;
+    [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
+    if (err.rmse < 0.01)
+        disp(['Frequency: ' num2str(curve.f ) ' error: ' num2str(err.rmse)]);
+    end
+%     subplot(1,2,1);
+%     tt = t-4:1/100:t;
+%     plot(tt, sin(tt));
+%     subplot(1,2,2);
+%     plot((t-4:t), doppler_history(t-4:t));
+%     drawnow limitrate;
+%     pause on;
+%     pause(0.05);
 end %while inf
 
 

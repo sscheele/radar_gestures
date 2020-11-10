@@ -19,7 +19,7 @@ function [newPoints] = filterStaticPoints(history, current)
        if (n_in_hist/(h_sz(1)) > PROP_THRESHOLD)
            static_idx_list = [static_idx_list c_idx];
        end
-       disp(curr_point); 
+%        disp(curr_point); 
     end
     
     out_idx = setdiff(1:curr_sz(1), static_idx_list);
