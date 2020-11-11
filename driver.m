@@ -10,7 +10,7 @@ if(SETUP_VIA_GUI)
     
 else 
     % Manual/programmatic entry
-    REAL_TIME_MODE = 0; %1 for from device 0 for playback from dat file
+    REAL_TIME_MODE = 1; %1 for from device 0 for playback from dat file
     ENABLE_RECORD = 0;
     datFile.path = '';
     datFile.name = 'tm_demo_log_110320_1620.dat';
@@ -184,9 +184,10 @@ curr_h_idx = 1;
 history = cell(1, HISTORY_LEN);
 history_is_full = 0;
 
-N_SIN_FRAMES = 10;
+N_SIN_FRAMES = 30;
 doppler_t = N_SIN_FRAMES;
 doppler_history = zeros(1, N_SIN_FRAMES);
+dop_smooth = 0;
 while (RUN_VIZ)    
     total_mag = 0;
     % get bytes from UART buffer or DATA file
@@ -226,7 +227,11 @@ while (RUN_VIZ)
                         curr_h_idx = curr_h_idx - HISTORY_LEN;
                         history_is_full = 1;
                     end
-                    doppler_history = [doppler_history sum(newframe.detObj.doppler)];
+                    dop_poi = newframe.detObj.doppler(abs(newframe.detObj.doppler) > 0.1);
+                    if ~isempty(dop_poi)
+                        dop_smooth = 0.4*dop_smooth + 0.6*mean(dop_poi);
+                    end
+                    doppler_history = [doppler_history dop_smooth];
                     if length(doppler_history) > 200
                         doppler_history = doppler_history(end-N_SIN_FRAMES:end);
                         doppler_t = N_SIN_FRAMES;
@@ -244,10 +249,19 @@ while (RUN_VIZ)
     mags = [mags total_mag];
 %     plot(mags);
     dopplerFrameStart = doppler_t - N_SIN_FRAMES + 1;
-    [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
-    if (err.rmse < 0.01)
-        disp(['Frequency: ' num2str(curve.f ) ' error: ' num2str(err.rmse)]);
+    plot(doppler_history(dopplerFrameStart:doppler_t));
+    drawnow limitrate;
+%     [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
+    [f, err] = getFreq(doppler_history(dopplerFrameStart:doppler_t));
+%     disp(['Frequency: ', num2str(f), ' err: ', num2str(err)]);
+    if (err < 0.8 && f > 0.1)
+        disp(['Frequency: ', num2str(f)]);
     end
+    
+%     if (err.rmse < 0.4*curve.A && curve.A > 0.07)
+%         disp(['Frequency: ' num2str(curve.f ) ' error: ' num2str(err.rmse) ' A: ' num2str(curve.A)]);
+%     end
+    disp("Continuing...");
 %     subplot(1,2,1);
 %     tt = t-4:1/100:t;
 %     plot(tt, sin(tt));
