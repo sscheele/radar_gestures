@@ -10,7 +10,7 @@ if(SETUP_VIA_GUI)
     
 else 
     % Manual/programmatic entry
-    REAL_TIME_MODE = 0; %1 for from device 0 for playback from dat file
+    REAL_TIME_MODE = 1; %1 for from device 0 for playback from dat file
     ENABLE_RECORD = 0;
     datFile.path = '';
     datFile.name = 'tm_demo_log_110320_1620.dat';
@@ -183,6 +183,11 @@ HISTORY_LEN = 10;
 curr_h_idx = 1;
 history = cell(1, HISTORY_LEN);
 history_is_full = 0;
+
+N_SIN_FRAMES = 30;
+doppler_t = N_SIN_FRAMES;
+doppler_history = zeros(1, N_SIN_FRAMES);
+dop_smooth = 0;
 while (RUN_VIZ)    
     total_mag = 0;
     % get bytes from UART buffer or DATA file
@@ -222,6 +227,17 @@ while (RUN_VIZ)
                         curr_h_idx = curr_h_idx - HISTORY_LEN;
                         history_is_full = 1;
                     end
+                    dop_poi = newframe.detObj.doppler(abs(newframe.detObj.doppler) > 0.1);
+                    if ~isempty(dop_poi)
+                        dop_smooth = 0.4*dop_smooth + 0.6*mean(dop_poi);
+                    end
+                    doppler_history = [doppler_history dop_smooth];
+                    if length(doppler_history) > 200
+                        doppler_history = doppler_history(end-N_SIN_FRAMES:end);
+                        doppler_t = N_SIN_FRAMES;
+                    else
+                        doppler_t = doppler_t + 1;
+                    end
                 end
             end
             filteredPtCloud = filterStaticPoints(history, rotatedPtCloud);
@@ -232,13 +248,28 @@ while (RUN_VIZ)
     end
     mags = [mags total_mag];
 %     plot(mags);
-    clf();
-    plot3(rotatedPtCloud(:,1), rotatedPtCloud(:,2), rotatedPtCloud(:,3), '+r');
-    hold on;
-    plot3(filteredPtCloud(:,1), filteredPtCloud(:,2), filteredPtCloud(:,3), 'og');
-    axis([0 5 0 5 0 5]);
+    dopplerFrameStart = doppler_t - N_SIN_FRAMES + 1;
+    plot(doppler_history(dopplerFrameStart:doppler_t));
     drawnow limitrate;
-    pause(0.2);
+%     [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
+    [f, err] = getFreq(doppler_history(dopplerFrameStart:doppler_t));
+%     disp(['Frequency: ', num2str(f), ' err: ', num2str(err)]);
+    if (err < 0.8 && f > 0.1)
+        disp(['Frequency: ', num2str(f)]);
+    end
+    
+%     if (err.rmse < 0.4*curve.A && curve.A > 0.07)
+%         disp(['Frequency: ' num2str(curve.f ) ' error: ' num2str(err.rmse) ' A: ' num2str(curve.A)]);
+%     end
+    disp("Continuing...");
+%     subplot(1,2,1);
+%     tt = t-4:1/100:t;
+%     plot(tt, sin(tt));
+%     subplot(1,2,2);
+%     plot((t-4:t), doppler_history(t-4:t));
+%     drawnow limitrate;
+%     pause on;
+%     pause(0.05);
 end %while inf
 
 
