@@ -7,7 +7,8 @@ import _thread as thread
 import time   
 
 global freqs, highlight, time_offset
-freqs = [0.2, 0.5, 0.5, 1]
+# freqs = [0.2, 0.5, 0.5, 1]
+freqs = [1, 1]
 highlight = -1
 time_offset = 0
 
@@ -25,14 +26,19 @@ def animate(i):
     global freqs, highlight, time_offset
     for idx, c in enumerate(circs):
         update_term = 2*np.pi*freqs[idx]*(i-time_offset*fs)/fs
+        if freqs[idx] < 0:
+            update_term += np.pi
         c.center = (1.5*np.cos(update_term), 1.5*np.sin(update_term))
         if idx == highlight:
             c.set_color('g')
+        else:
+            c.set_color('b')
     return circs
 
 # BEGIN WEBSOCKET CODE
 def on_message(ws, message):
     global freqs, highlight, time_offset
+    print(message)
     if message[0] == 'r':
         time_offset = time.time() - time_start
     if message[0] == 's':
@@ -40,7 +46,7 @@ def on_message(ws, message):
         rate = float(message[2:])
         freqs[idx] = rate
     if message[0] == 'h':
-        highlight = int(message[1])
+        highlight = int(message[1:])
 
 def on_error(ws, error):
     print("Websocket error: ", error)
@@ -59,17 +65,15 @@ def test_run(ws):
 
 if __name__ == "__main__":
     # websocket.enableTrace(True)
-    ws = websocket.WebSocketApp("ws://echo.websocket.org/",
+    ws = websocket.WebSocketApp("ws://localhost:30000",
                               on_message = on_message,
                               on_error = on_error,
                               on_close = on_close)
-    ws.on_open = test_run          
+    # ws.on_open = test_run          
     thread.start_new_thread(ws.run_forever, ())
 
     # marking the x-axis and y-axis 
-    fig, axes = plt.subplots(2, 2, squeeze=True)
-    fig.set_figheight(6)
-    fig.set_figwidth(6)
+    fig, axes = plt.subplots(1, 2, squeeze=True)
     axes = axes.ravel()
     # fig.set
     plt.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=0, hspace=0)
@@ -80,8 +84,8 @@ if __name__ == "__main__":
         a.yaxis.set_visible(False)
         a.set(adjustable='box', aspect='equal')
 
-    circs = [plt.Circle((1, 0), 0.3, color='b') for _ in range(4)]
-    for i in range(4):
+    circs = [plt.Circle((1, 0), 0.3, color='b') for _ in range(len(axes))]
+    for i in range(len(axes)):
         axes[i].add_artist(circs[i])
 
     anim = FuncAnimation(fig, animate, init_func = init, interval = sample_pd, blit = True) 

@@ -16,5 +16,5 @@ function [f, err] = getFreq(Y)
         err = err + min(abs(target - i));
     end
     err = err / length(target);
-    f = 1/mean_diff;
+    f = 1/(2*mean_diff);
 return

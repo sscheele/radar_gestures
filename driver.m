@@ -177,6 +177,23 @@ else
     hFrameSlider.SliderStep = [1 10].*1/(hFrameSlider.Max-hFrameSlider.Min);
 end
 
+server = EchoServer(30000);
+disp("Server set up");
+input("Press enter when ready to begin...");
+f1 = 1.1;
+f2 = 1.6;
+pause on;
+server.sendToAll(['s0' num2str(f1)]);
+pause(0.1);
+server.sendToAll(['s1' num2str(f2)]);
+pause(0.1);
+% server.sendToAll(['s2-' num2str(f1)]);
+% pause(0.1);
+% server.sendToAll(['s3-' num2str(f2)]);
+% pause(0.1);
+server.sendToAll('r');
+ui_start = tic;
+
 mags = [];
 frameIndex = 0;
 HISTORY_LEN = 10;
@@ -188,6 +205,12 @@ N_SIN_FRAMES = 30;
 doppler_t = N_SIN_FRAMES;
 doppler_history = zeros(1, N_SIN_FRAMES);
 dop_smooth = 0;
+
+n_bad_frames = 0;
+have_disabled = 1;
+
+fs_start = tic;
+fs_frames = 0;
 while (RUN_VIZ)    
     total_mag = 0;
     % get bytes from UART buffer or DATA file
@@ -235,33 +258,58 @@ while (RUN_VIZ)
                     if length(doppler_history) > 200
                         doppler_history = doppler_history(end-N_SIN_FRAMES:end);
                         doppler_t = N_SIN_FRAMES;
+                        fs_start = tic;
+                        fs_frames = 0;
                     else
                         doppler_t = doppler_t + 1;
                     end
                 end
             end
             filteredPtCloud = filterStaticPoints(history, rotatedPtCloud);
+            fs_frames = fs_frames + 1;
 %             disp(rotatedPtCloud(1,:));      
+            dopplerFrameStart = doppler_t - N_SIN_FRAMES + 1;
+            plot(doppler_history(dopplerFrameStart:doppler_t));
+            drawnow limitrate;
+        %     [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
+            [f, err] = getFreq(doppler_history(dopplerFrameStart:doppler_t));
+            if (err < 1.2 && f > 0.07)
+                fs = fs_frames/toc(fs_start);
+                freq = 1.1*fs*f;
+                disp(['Frequency: ', num2str(freq), ' err: ', num2str(err)]);
 
-        end % have validFrame
-    else % have data in newFrame
-    end
-    mags = [mags total_mag];
+                tt = (-4:0)*(1/fs) + toc(ui_start);
+                real_sum = sum(doppler_history(end-4:end));
+                if (abs(freq - f1) < 0.15)
+                    server.sendToAll('h0');
+                    n_bad_frames = 0;
+                    have_disabled = 0;
+                elseif (abs(freq - f2) < 0.15)
+                    server.sendToAll('h1');
+                    n_bad_frames = 0;
+                    have_disabled = 0;
+                else
+                    n_bad_frames = n_bad_frames + 1;
+                end
+            else
+                n_bad_frames = n_bad_frames + 1;
+            end
+
+            if (n_bad_frames > 25 && have_disabled == 0)
+                server.sendToAll('h-1');
+                have_disabled = 1;
+            end
+                end % have validFrame
+            else % have data in newFrame
+            end
+%     mags = [mags total_mag];
 %     plot(mags);
-    dopplerFrameStart = doppler_t - N_SIN_FRAMES + 1;
-    plot(doppler_history(dopplerFrameStart:doppler_t));
-    drawnow limitrate;
-%     [curve, err] = sineFit(dopplerFrameStart:doppler_t, doppler_history(dopplerFrameStart:doppler_t));
-    [f, err] = getFreq(doppler_history(dopplerFrameStart:doppler_t));
-%     disp(['Frequency: ', num2str(f), ' err: ', num2str(err)]);
-    if (err < 0.8 && f > 0.1)
-        disp(['Frequency: ', num2str(f)]);
-    end
+    
     
 %     if (err.rmse < 0.4*curve.A && curve.A > 0.07)
 %         disp(['Frequency: ' num2str(curve.f ) ' error: ' num2str(err.rmse) ' A: ' num2str(curve.A)]);
 %     end
-    disp("Continuing...");
+%     disp("Continuing...");
 %     subplot(1,2,1);
 %     tt = t-4:1/100:t;
 %     plot(tt, sin(tt));
